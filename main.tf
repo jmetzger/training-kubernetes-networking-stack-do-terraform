@@ -169,10 +169,9 @@ resource "helm_release" "nginx_ingress" {
 # -----------------------------
 # DNS ENTRY
 # -----------------------------
-resource "digitalocean_record" "ingress_dns" {
+resource "digitalocean_record" "ingress_dns_wildcard_user" {
   domain = "do.t3isp.de"
   type   = "A"
-  name   = "app"
+  name   = "*.${local.current_user}"
   value  = helm_release.nginx_ingress.status[0].load_balancer[0].ingress[0].ip
 }
-
