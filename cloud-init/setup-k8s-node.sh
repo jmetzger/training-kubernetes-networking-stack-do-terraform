@@ -1,32 +1,19 @@
 #!/bin/bash
-set -e
-K8S_VERSION="1.33.0-00"
-FALLBACK_VERSION="1.32.3-00"
+set -euo pipefail
 
-# Prüfen, ob K8S_VERSION verfügbar ist
-if ! apt-cache madison kubeadm | grep -q "$K8S_VERSION"; then
-  echo "[WARN] Kubernetes-Version $K8S_VERSION ist nicht verfügbar."
-  echo "[INFO] Fallback auf Version $FALLBACK_VERSION"
-  K8S_VERSION="$FALLBACK_VERSION"
-
-  if ! apt-cache madison kubeadm | grep -q "$K8S_VERSION"; then
-    echo "[ERROR] Auch die Fallback-Version $FALLBACK_VERSION ist nicht verfügbar."
-    echo "Verfügbare Versionen:"
-    apt-cache madison kubeadm
-    exit 1
-  fi
-fi
+K8S_VERSION="v1.32"
 
 # Disable swap
 swapoff -a
 sed -i '/ swap / s/^/#/' /etc/fstab
 
-# Install basic tools
+# Update & install basic tools
 apt-get update && apt-get install -y \
   apt-transport-https \
   ca-certificates \
   curl \
   gnupg \
+  gnupg2 \
   lsb-release \
   software-properties-common
 
@@ -34,25 +21,34 @@ apt-get update && apt-get install -y \
 apt-get install -y containerd
 mkdir -p /etc/containerd
 containerd config default > /etc/containerd/config.toml
+
+# Configure containerd to use systemd cgroups
+sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+
 systemctl restart containerd
 systemctl enable containerd
 
-# Add Kubernetes repo
-curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
-echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" > /etc/apt/sources.list.d/kubernetes.list
+# Add Kubernetes repo and keys
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://pkgs.k8s.io/core:/stable:/${K8S_VERSION}/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+chmod 0644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+cat <<EOF >/etc/apt/sources.list.d/kubernetes.list
+deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/${K8S_VERSION}/deb/ / # ${K8S_VERSION}
+EOF
+
 apt-get update
-apt-get install -y kubelet=${K8S_VERSION} kubeadm=${K8S_VERSION} kubectl=${K8S_VERSION}
+apt-get install -y kubelet kubeadm kubectl
 apt-mark hold kubelet kubeadm kubectl
 
-# Enable net.bridge bridge-nf-call-iptables
+# Enable networking
 modprobe br_netfilter
-echo "net.bridge.bridge-nf-call-iptables = 1" >> /etc/sysctl.conf
-echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
-sysctl -p
+cat <<EOF > /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables  = 1
+net.ipv4.ip_forward                 = 1
+EOF
+sysctl --system
 
-# Log installed versions
-echo "--- Installed Kubernetes Versions ---" > /var/log/k8s-setup.log
-kubelet --version >> /var/log/k8s-setup.log
-kubeadm version -o short >> /var/log/k8s-setup.log
-kubectl version --client -o json | jq -r '.clientVersion.gitVersion' >> /var/log/k8s-setup.log
-cat /var/log/k8s-setup.log
+# Log result
+echo "Kubernetes ${K8S_VERSION} installiert auf $(hostname)"

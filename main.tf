@@ -32,6 +32,19 @@ locals {
   project_suffix = length(local.current_user) > 0 ? "-" + local.current_user : ""
 }
 
+# - output 
+output "droplet_ips" {
+  description = "Public IPv4 addresses of all droplets"
+  value       = [for d in digitalocean_droplet.k8s_nodes : d.ipv4_address]
+}
+
+
+output "debug_project_suffix" {
+  value = "${local.project_suffix}"
+}
+
+
+
 # -----------------------------
 # PROVIDERS
 # -----------------------------
@@ -59,14 +72,6 @@ resource "digitalocean_ssh_key" "k8s_ssh" {
 }
 
 # -----------------------------
-# NETWORKING
-# -----------------------------
-resource "digitalocean_vpc" "k8s_vpc" {
-  name   = "k8s-vpc"
-  region = var.region
-}
-
-# -----------------------------
 # DROPLETS
 # -----------------------------
 resource "digitalocean_droplet" "k8s_nodes" {
@@ -76,8 +81,6 @@ resource "digitalocean_droplet" "k8s_nodes" {
   size               = var.droplet_size
   image              = "ubuntu-22-04-x64"
   ssh_keys           = [digitalocean_ssh_key.k8s_ssh.id]
-  private_networking = true
-  vpc_uuid           = digitalocean_vpc.k8s_vpc.id
   user_data          = file("cloud-init/setup-k8s-node.sh")
 }
 
@@ -97,81 +100,73 @@ resource "digitalocean_project_resources" "project_binding" {
 }
 
 # -----------------------------
+# Check for: 
+# - ssh running
+# - cloud-init boot completed
+# -----------------------------
+
+resource "null_resource" "wait_for_control_plane_ssh" {
+  depends_on = [digitalocean_droplet.k8s_nodes]
+
+  connection {
+    type        = "ssh"
+    user        = "root"
+    host        = digitalocean_droplet.k8s_nodes[0].ipv4_address
+    private_key = tls_private_key.ssh.private_key_pem
+    timeout     = "5m"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "echo 'SSH is up on control-plane: ${digitalocean_droplet.k8s_nodes[0].ipv4_address}'",
+      "echo 'Waiting for cloud-init to finish...'",
+      "while [ ! -f /var/lib/cloud/instance/boot-finished ]; do sleep 5; done",
+      "echo 'cloud-init done.'"
+    ]
+  }
+}
+
+
+# -----------------------------
 # LOCAL EXEC JOIN SCRIPT
 # -----------------------------
 resource "null_resource" "run_join_script" {
+
+  depends_on = [null_resource.wait_for_control_plane_ssh]
   provisioner "local-exec" {
     command = <<EOT
-chmod +x ./scripts/join-workers.sh
-./scripts/join-workers.sh
+chmod +x ./scripts/join-workers.sh && ./scripts/join-workers.sh "${self.triggers.worker_ips}"
 EOT
   }
-  depends_on = [digitalocean_droplet.k8s_nodes]
-}
-
-# -----------------------------
-# HELM RELEASE: METALLB
-# -----------------------------
-resource "helm_release" "metallb" {
-  name             = "metallb"
-  repository       = "https://metallb.github.io/metallb"
-  chart            = "metallb"
-  namespace        = "metallb-system"
-  create_namespace = true
-  version          = "0.13.12"
-}
-
-resource "kubernetes_manifest" "metallb_pool" {
-  manifest = {
-    apiVersion = "metallb.io/v1beta1"
-    kind       = "IPAddressPool"
-    metadata = {
-      name      = "default-address-pool"
-      namespace = "metallb-system"
-    }
-    spec = {
-      addresses = [
-        for ip in digitalocean_droplet.k8s_nodes : ip.ipv4_address if ip.name != "k8s-cp"
-      ]
-    }
+  # Trigger auf IPs – sobald die sich ändern, wird neu ausgeführt
+  triggers = {
+    worker_ips = join(",", [for droplet in digitalocean_droplet.k8s_nodes : droplet.ipv4_address])
   }
+
 }
 
-resource "kubernetes_manifest" "metallb_l2" {
-  manifest = {
-    apiVersion = "metallb.io/v1beta1"
-    kind       = "L2Advertisement"
-    metadata = {
-      name      = "l2adv"
-      namespace = "metallb-system"
-    }
-    spec = {}
+# -----------------------------
+# DNS ENTRY (Wildcard pro Benutzer)
+# Nutzt eine Datenquelle, um die IP des Ingress-Service aus dem Cluster abzurufen,
+# nachdem dieser via Helm erstellt wurde. Damit wird die externe IP zuverlässig abgefragt.
+# -----------------------------
+data "kubernetes_service" "ingress_svc" {
+  metadata {
+    name      = "ingress-nginx-controller"
+    namespace = "ingress-nginx"
   }
+  depends_on = [helm_release.nginx_ingress] # stellt sicher, dass IP verfügbar ist
 }
 
-# -----------------------------
-# HELM RELEASE: INGRESS NGINX
-# -----------------------------
-resource "helm_release" "nginx_ingress" {
-  name             = "nginx-ingress"
-  repository       = "https://kubernetes.github.io/ingress-nginx"
-  chart            = "ingress-nginx"
-  namespace        = "ingress-nginx"
-  create_namespace = true
-  version          = "4.10.0"
-
-  set {
-    name  = "controller.service.type"
-    value = "LoadBalancer"
-  }
+output "debug_ingress_service" {
+  value = data.kubernetes_service.ingress_svc
 }
 
-# -----------------------------
-# DNS ENTRY
-# -----------------------------
-resource "digitalocean_record" "ingress_dns_wildcard_user" {
-  domain = "do.t3isp.de"
-  type   = "A"
-  name   = "*.${local.current_user}"
-  value  = helm_release.nginx_ingress.status[0].load_balancer[0].ingress[0].ip
-}
+#resource "digitalocean_record" "ingress_dns_wildcard_user" {
+#  domain = "do.t3isp.de"
+#  type   = "A"
+#  name   = "*.${local.current_user}"
+#  value  = data.kubernetes_service.ingress_svc.status.load_balancer.ingress[0].ip
+#}
+
+

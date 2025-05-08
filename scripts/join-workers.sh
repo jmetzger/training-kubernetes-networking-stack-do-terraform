@@ -2,8 +2,15 @@
 set -e
 
 KEY="id_rsa_k8s_do"
-CP_IP=$(terraform output -raw droplet_ips | head -n1)
-WORKERS=$(terraform output -json droplet_ips | jq -r '.[1:][]')
+# Input: Kommagetrennte IPs
+IFS=',' read -r -a NODE_IPS <<< "$1"
+echo  "NODE_IPS"$NODE_IPS
+
+
+CP_IP="${NODE_IPS[0]}"
+echo "CP_IP"$CP_IP"<--"
+
+WORKERS=("${NODE_IPS[@]:1}")  # Alles außer dem ersten Element
 
 echo "[INFO] Initializing control plane on $CP_IP..."
 ssh -o StrictHostKeyChecking=no -i $KEY root@$CP_IP <<EOF
@@ -19,7 +26,7 @@ EOF
 echo "[INFO] Getting join command..."
 JOIN_CMD=$(ssh -i $KEY root@$CP_IP "kubeadm token create --print-join-command")
 
-for ip in $WORKERS; do
+for ip in "${WORKERS[@]}"; do
   echo "[INFO] Joining worker $ip..."
   ssh -o StrictHostKeyChecking=no -i $KEY root@$ip "$JOIN_CMD"
 done

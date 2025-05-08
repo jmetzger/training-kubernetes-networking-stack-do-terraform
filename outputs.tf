@@ -1,7 +1,3 @@
-output "droplet_ips" {
-  description = "Public IPv4 addresses of all droplets"
-  value       = [for d in digitalocean_droplet.k8s_nodes : d.ipv4_address]
-}
 
 output "private_ips" {
   description = "Private IPv4 addresses of all droplets"

@@ -1,0 +1,4 @@
+ips:
+%{ for ip in ips ~}
+  - ${ip}/32
+%{ endfor }

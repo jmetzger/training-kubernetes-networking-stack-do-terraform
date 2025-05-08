@@ -1,3 +1,7 @@
+variable "kubeconfig_path" {
+  default = "~/.kube/config"
+}
+
 variable "do_token" {
   description = "DigitalOcean API token"
   type        = string

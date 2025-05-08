@@ -1,2 +1,4 @@
 *.zip
-/.terraform*
+.terraform*
+.terraform.tfstate
+.env
