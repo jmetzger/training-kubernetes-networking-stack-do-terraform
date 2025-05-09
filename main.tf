@@ -2,34 +2,14 @@
 # VERSIONS
 # -----------------------------
 terraform {
-  required_version = ">= 1.4.0"
+  required_version = ">= 1.5.0"
 
   required_providers {
     digitalocean = {
       source  = "digitalocean/digitalocean"
       version = ">= 2.29.0"
     }
-    helm = {
-      source  = "hashicorp/helm"
-      version = ">= 2.11.0"
-    }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = ">= 2.24.0"
-    }
   }
-}
-
-# -----------------------------
-# LOCALS
-# -----------------------------
-locals {
-  current_user = trimspace(chomp(tolist([
-    try(env("USER"), ""),
-    try(env("USERNAME"), "")
-  ])[0]))
-
-  project_suffix = length(local.current_user) > 0 ? "-" + local.current_user : ""
 }
 
 # - output 
@@ -37,13 +17,6 @@ output "droplet_ips" {
   description = "Public IPv4 addresses of all droplets"
   value       = [for d in digitalocean_droplet.k8s_nodes : d.ipv4_address]
 }
-
-
-output "debug_project_suffix" {
-  value = "${local.project_suffix}"
-}
-
-
 
 # -----------------------------
 # PROVIDERS
@@ -88,7 +61,7 @@ resource "digitalocean_droplet" "k8s_nodes" {
 # PROJECT
 # -----------------------------
 resource "digitalocean_project" "k8s_project" {
-  name        = "k8s-lab${local.project_suffix}"
+  name        = "k8s-lab-${data.external.current_user.result["user"]}"
   description = "Self-managed Kubernetes cluster with Calico"
   purpose     = "Web Application"
   environment = "Development"
@@ -126,7 +99,6 @@ resource "null_resource" "wait_for_control_plane_ssh" {
   }
 }
 
-
 # -----------------------------
 # LOCAL EXEC JOIN SCRIPT
 # -----------------------------
@@ -135,7 +107,7 @@ resource "null_resource" "run_join_script" {
   depends_on = [null_resource.wait_for_control_plane_ssh]
   provisioner "local-exec" {
     command = <<EOT
-chmod +x ./scripts/join-workers.sh && ./scripts/join-workers.sh "${self.triggers.worker_ips}"
+chmod +x ./scripts/join-workers.sh && ./scripts/join-workers.sh "${self.triggers.worker_ips}" "${digitalocean_droplet.k8s_nodes[0].ipv4_address_private}"
 EOT
   }
   # Trigger auf IPs – sobald die sich ändern, wird neu ausgeführt
@@ -150,17 +122,6 @@ EOT
 # Nutzt eine Datenquelle, um die IP des Ingress-Service aus dem Cluster abzurufen,
 # nachdem dieser via Helm erstellt wurde. Damit wird die externe IP zuverlässig abgefragt.
 # -----------------------------
-data "kubernetes_service" "ingress_svc" {
-  metadata {
-    name      = "ingress-nginx-controller"
-    namespace = "ingress-nginx"
-  }
-  depends_on = [helm_release.nginx_ingress] # stellt sicher, dass IP verfügbar ist
-}
-
-output "debug_ingress_service" {
-  value = data.kubernetes_service.ingress_svc
-}
 
 #resource "digitalocean_record" "ingress_dns_wildcard_user" {
 #  domain = "do.t3isp.de"

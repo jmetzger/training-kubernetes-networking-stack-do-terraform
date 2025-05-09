@@ -1,29 +1,3 @@
-# -----------------------------
-# HELM RELEASE: INGRESS NGINX
-# -----------------------------
-resource "helm_release" "metallb" {
-  name             = "metallb"
-  repository       = "https://metallb.github.io/metallb"
-  chart            = "metallb"
-  namespace        = "metallb-system"
-  upgrade_install  = true
-  create_namespace = true
-  version          = "0.13.12"
-
-  depends_on = [null_resource.run_join_script]
-}
-
-resource "helm_release" "metallb_config" {
-  depends_on = [helm_release.metallb]
-  name             = "metallb-config"
-  namespace        = "metallb-system"
-  repository       = "./charts"
-  upgrade_install  = true 
-  chart            = "metallb-config"
-  values           = [local.metallb_values_yaml]
-  version          = "0.14.8"
-}
-
 locals {
   all_node_ips = [for droplet in digitalocean_droplet.k8s_nodes : droplet.ipv4_address]
   worker_ips   = slice(local.all_node_ips, 1, length(local.all_node_ips))
@@ -33,15 +7,22 @@ locals {
 
 }
 
-resource "helm_release" "nginx_ingress" {
-  depends_on = [null_resource.run_join_script,helm_release.metallb_config]
-  name             = "nginx-ingress"
-  repository       = "https://kubernetes.github.io/ingress-nginx"
-  chart            = "ingress-nginx"
-  namespace        = "ingress-nginx"
-  create_namespace = true
-  upgrade_install  = true
-  version          = "4.10.0"
+resource "local_file" "file_metallb_values_yaml" {
+    content  = local.metallb_values_yaml
+    filename = "metallb-values.yaml"
+}
+
+resource "null_resource" "run_helm_install" {
+
+  depends_on = [local_file.file_metallb_values_yaml,null_resource.run_join_script]
+  provisioner "local-exec" {
+    command = <<EOT
+chmod +x ./scripts/helm-charts/deploy.sh && ./scripts/helm-charts/deploy.sh
+EOT
+  }
 
 }
+
+
+
 
