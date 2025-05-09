@@ -4,21 +4,21 @@ set -e
 KEY="id_rsa_k8s_do"
 # Input: Kommagetrennte IPs
 IFS=',' read -r -a NODE_IPS <<< "$1"
+IFS=',' read -r -a NODE_IPS_PRIVATE <<< "$2"
 echo  "NODE_IPS"$NODE_IPS
 
 
-#CP_IP_PRIVATE="$NODE_IPS_PRIVATE[0]}"
-CP_IP_PRIVATE=$2
+CP_IP_PRIVATE="${NODE_IPS_PRIVATE[0]}"
 CP_IP="${NODE_IPS[0]}"
 echo "CP_IP"$CP_IP"<--"
 echo "CP_IP_PRIVATE"$CP_IP_PRIVATE
 
 WORKERS=("${NODE_IPS[@]:1}")  # Alles außer dem ersten Element
+WORKERS_PRIVATE=("${NODE_IPS_PRIVATE[@]:1}")  # Alles außer dem ersten Element
+
 
 echo "[INFO] Initializing control plane on $CP_IP..."
 ssh -o StrictHostKeyChecking=no -i $KEY root@$CP_IP <<EOF
-
-#kubeadm init --pod-network-cidr=192.168.0.0/16 --apiserver-advertise-address=$CP_IP_PRIVATE --config=tmp_init_config.yaml
 
 cat << CONFIG > tmp_init_config.yaml
 apiVersion: kubeadm.k8s.io/v1beta3
@@ -55,10 +55,14 @@ DISCOVERY_HASH=$(ssh -i $KEY root@$CP_IP "openssl x509 -pubkey -in /etc/kubernet
 
 echo "[INFO] Join command is $JOIN_CMD"
 
-for ip in "${WORKERS[@]}"; do
-  echo "[INFO] Joining worker $ip..."
+#for ip in "${WORKERS[@]}"; do
+for i in "${!WORKERS[@]}"; do
+  IP="${WORKERS[$i]}"
+  IP_PRIVATE="${WORKERS_PRIVATE[$i]}"
+  echo "[INFO] Joining worker $IP..."
+
   # ssh -o StrictHostKeyChecking=no -i $KEY root@$ip "$JOIN_CMD"
-  ssh -o StrictHostKeyChecking=no -i $KEY root@$ip <<EOF
+  ssh -o StrictHostKeyChecking=no -i $KEY root@$IP <<EOF
 
 cat <<JOIN > tmp_join_config.yaml
 apiVersion: kubeadm.k8s.io/v1beta3
@@ -71,7 +75,7 @@ discovery:
       - "$DISCOVERY_HASH"
 nodeRegistration:
   kubeletExtraArgs:
-    node-ip: $ip
+    node-ip: "$IP_PRIVATE"
 JOIN
 
 kubeadm join --config tmp_join_config.yaml

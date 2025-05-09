@@ -52,7 +52,7 @@ resource "digitalocean_droplet" "k8s_nodes" {
   name               = "k8s-${count.index == 0 ? "cp" : "w${count.index}"}"
   region             = var.region
   size               = var.droplet_size
-  image              = "ubuntu-22-04-x64"
+  image              = "ubuntu-24-04-x64"
   ssh_keys           = [digitalocean_ssh_key.k8s_ssh.id]
   user_data          = file("cloud-init/setup-k8s-node.sh")
 }
@@ -107,7 +107,7 @@ resource "null_resource" "run_join_script" {
   depends_on = [null_resource.wait_for_control_plane_ssh]
   provisioner "local-exec" {
     command = <<EOT
-chmod +x ./scripts/join-workers.sh && ./scripts/join-workers.sh "${self.triggers.worker_ips}" "${digitalocean_droplet.k8s_nodes[0].ipv4_address_private}"
+chmod +x ./scripts/join-workers.sh && ./scripts/join-workers.sh "${self.triggers.worker_ips}" "${join(",", [for droplet in digitalocean_droplet.k8s_nodes : droplet.ipv4_address_private])}"
 EOT
   }
   # Trigger auf IPs – sobald die sich ändern, wird neu ausgeführt
