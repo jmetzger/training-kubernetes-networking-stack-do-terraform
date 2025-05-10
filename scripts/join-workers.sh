@@ -35,6 +35,9 @@ kind: ClusterConfiguration
 kubernetesVersion: "v1.32.0"
 networking:
   podSubnet: "192.168.0.0/16"  # z. B. für Flannel
+apiServer:
+  certSANs:
+    - $CP_IP  # Allow to connect to public ip
 CONFIG
 
 kubeadm init --config=tmp_init_config.yaml
