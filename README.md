@@ -34,10 +34,6 @@ export TF_VAR_do_token="<your_token>"
 # Terraform initialisieren und Infrastruktur provisionieren
 terraform init
 terraform apply -auto-approve
-
-# Cluster konfigurieren und Worker beitreten lassen
-chmod +x scripts/join-workers.sh
-./scripts/join-workers.sh
 ```
 
 Nach erfolgreicher Initialisierung wird die Kubernetes-Konfiguration (`admin.conf`) automatisch vom Control-Plane-Node kopiert und gespeichert als:
