@@ -61,29 +61,17 @@ Falls das Verzeichnis `~/.kube` noch nicht existiert, wird es automatisch erstel
 ## ⚙️ Komponenten & Versionen
 
 - Terraform: >= 1.4.0
-- Kubernetes: `1.33.0-00` (Fallback: `1.32.3-00`)
-- Calico: Tigera Operator (CRD-basiert)
-- MetalLB: Helm Chart `0.13.12`
-- ingress-nginx: Helm Chart `4.10.0`
+- Kubernetes: `1.34.0-00` (Fallback: `1.32.3-00`)
 
 ---
 
-## 📡 DNS Setup
-
-Nach der Ingress-Installation werden automatisch A-Records erstellt:
-
-> Hinweis: Der zweite Eintrag verwendet dynamisch den aktuell eingeloggten Benutzer (z. B. `tln1`) durch Auslesen von `$USER` oder `$USERNAME`.
-
-- `*.tln1.do.t3isp.de → LoadBalancer IP` (wird automatisch anhand des angemeldeten Benutzers generiert)
-
 ---
 
-## 🧪 Validierung
+## 🧪 Validierung (sollte auf NotReady stehen)
 
 ```bash
 kubectl get nodes
 kubectl get pods -A
-kubectl get ipaddresspool -n metallb-system
 ```
 
 ---
@@ -106,4 +94,4 @@ Der generierte private SSH-Key `id_rsa_k8s_do` wird lokal gespeichert. Bitte sic
 ```bash
 terraform destroy -auto-approve
 rm -f id_rsa_k8s_do id_rsa_k8s_do.pub
-
+```
