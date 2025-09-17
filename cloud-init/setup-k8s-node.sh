@@ -1,7 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-K8S_VERSION="v1.32"
+K8S_VERSION="v1.34"
+# Fallback auf 
+# K8S_VERSION="v1.34"
 
 # Disable swap
 swapoff -a
