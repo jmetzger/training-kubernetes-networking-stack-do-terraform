@@ -4,9 +4,6 @@ Dieses Repository automatisiert den Aufbau eines selbstverwalteten Kubernetes-Cl
 
 - Terraform-Infrastruktur (VPC, Droplets, SSH Key, Helm, DNS)
 - Kubernetes-Installation via Cloud-init + kubeadm
-- Calico CNI via Tigera Operator
-- MetalLB LoadBalancer mit L2 Propagation
-- NGINX Ingress Controller
 - Automatischer `kubeadm join` per SSH + kubeconfig Übergabe
 
 ---
