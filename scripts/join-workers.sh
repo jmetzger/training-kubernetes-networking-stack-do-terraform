@@ -44,9 +44,6 @@ kubeadm init --config=tmp_init_config.yaml
 mkdir -p /root/.kube
 cp -i /etc/kubernetes/admin.conf /root/.kube/config
 
-# Install Calico via Tigera Operator
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/custom-resources.yaml
 EOF
 
 echo "[INFO] Getting join command..."
